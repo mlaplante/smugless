@@ -4,7 +4,7 @@ import { GOOGLE_CALLBACK_PATH } from "./google-auth";
 import { defaultIconResponse, uploadedIconResponse } from "./icon";
 import { IMAGE_VARIANT_PARAM, LIMITED_IMAGE_VARIANT, parseImageRequest, publicImageEdge, resizeBounds, serveImage } from "./images";
 import { findPhoto, listedGalleries, loadManifest, PHOTO_ID, saveManifest, validateManifest, type Env } from "./manifest";
-import { sameOriginWrites, securityHeaders } from "./security";
+import { cleanFilename, contentLength, MAX_MANIFEST_BYTES, MAX_UPLOAD_BYTES, sameOriginWrites, securityHeaders } from "./security";
 import { aboutPage, adminPage, galleryPage, homePage, notFoundPage } from "./views";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -94,6 +94,7 @@ app.get("/api/hosting-cost", async (c) => {
 });
 
 app.put("/api/manifest", async (c) => {
+  if (contentLength(c) > MAX_MANIFEST_BYTES) return c.json({ error: "Manifest is too large" }, 413);
   let body: unknown;
   try {
     body = await c.req.json();
@@ -120,12 +121,15 @@ app.post("/api/photos", async (c) => {
   if (!ACCEPTED_TYPES.has(type)) return c.json({ error: `Unsupported file type: ${type || "unknown"}` }, 415);
   const rawName = c.req.header("X-Filename");
   if (!rawName) return c.json({ error: "Missing X-Filename header" }, 400);
-  if (!c.req.header("Content-Length")) return c.json({ error: "Content-Length required" }, 411);
+  const length = contentLength(c);
+  if (Number.isNaN(length)) return c.json({ error: "Content-Length required" }, 411);
+  if (length > MAX_UPLOAD_BYTES) return c.json({ error: "Larger than 100 MB" }, 413);
 
   let filename = rawName;
   try {
     filename = decodeURIComponent(rawName);
   } catch {}
+  filename = cleanFilename(filename);
 
   const id = newId();
   await c.env.BUCKET.put(`originals/${id}`, c.req.raw.body, {

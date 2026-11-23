@@ -7,6 +7,9 @@ import type { Env } from "./manifest";
 type C = Context<{ Bindings: Env }>;
 
 export const MIN_PASSWORD_LENGTH = 12;
+export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // Workers request body limit
+export const MAX_MANIFEST_BYTES = 5 * 1024 * 1024;
+const MAX_FILENAME_LENGTH = 255;
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 // Every script and stylesheet is a same-origin file. The one inline style is the
@@ -98,4 +101,15 @@ export function basicAuthEnabled(env: Env): boolean {
 /** Short passwords make online guessing practical, so the admin refuses them. */
 export function passwordTooShort(password: string): boolean {
   return password.length < MIN_PASSWORD_LENGTH;
+}
+
+/** Original upload name for reference only: drop control characters and cap the length. */
+export function cleanFilename(name: string): string {
+  return [...name.replace(/[\u0000-\u001f\u007f]/g, "").trim()].slice(0, MAX_FILENAME_LENGTH).join("");
+}
+
+/** Declared Content-Length, or NaN if missing or malformed. */
+export function contentLength(c: C): number {
+  const raw = c.req.header("Content-Length");
+  return raw && /^\d+$/.test(raw) ? Number(raw) : NaN;
 }
