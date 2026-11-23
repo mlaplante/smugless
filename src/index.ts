@@ -4,9 +4,13 @@ import { GOOGLE_CALLBACK_PATH } from "./google-auth";
 import { defaultIconResponse, uploadedIconResponse } from "./icon";
 import { IMAGE_VARIANT_PARAM, LIMITED_IMAGE_VARIANT, parseImageRequest, publicImageEdge, resizeBounds, serveImage } from "./images";
 import { findPhoto, listedGalleries, loadManifest, PHOTO_ID, saveManifest, validateManifest, type Env } from "./manifest";
+import { sameOriginWrites, securityHeaders } from "./security";
 import { aboutPage, adminPage, galleryPage, homePage, notFoundPage } from "./views";
 
 const app = new Hono<{ Bindings: Env }>();
+
+app.use("*", securityHeaders);
+app.use("*", sameOriginWrites);
 
 const ACCEPTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
 const PAGE_CACHE = "public, max-age=60";
