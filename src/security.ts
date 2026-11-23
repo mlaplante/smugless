@@ -1,9 +1,12 @@
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import type { Env } from "./manifest";
 
-// Hardening that wraps every route: browser security headers and a check that
-// state-changing requests come from this site.
+// Hardening that wraps every route (browser security headers, a check that
+// state-changing requests come from this site) and helpers for admin sign-in.
 
+type C = Context<{ Bindings: Env }>;
+
+export const MIN_PASSWORD_LENGTH = 12;
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 // Every script and stylesheet is a same-origin file. The one inline style is the
@@ -70,3 +73,29 @@ export const sameOriginWrites: MiddlewareHandler<{ Bindings: Env }> = async (c, 
   if (crossOrigin) return c.text("Cross-origin request refused", 403);
   return next();
 };
+
+/**
+ * Counts one sign-in attempt against the per-IP limit. Every attempt counts, so
+ * the limit caps password guesses. Without the LOGIN_LIMITER binding there is no limit.
+ */
+export async function allowAuthAttempt(c: C): Promise<boolean> {
+  const limiter = c.env.LOGIN_LIMITER;
+  if (!limiter) return true;
+  const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
+  try {
+    return (await limiter.limit({ key: `auth:${ip}` })).success;
+  } catch (err) {
+    console.error("rate limiter failed", err);
+    return true; // fail open: a limiter outage shouldn't lock the owner out
+  }
+}
+
+/** HTTP Basic auth for scripts is on unless ADMIN_BASIC_AUTH is "off". */
+export function basicAuthEnabled(env: Env): boolean {
+  return env.ADMIN_BASIC_AUTH !== "off";
+}
+
+/** Short passwords make online guessing practical, so the admin refuses them. */
+export function passwordTooShort(password: string): boolean {
+  return password.length < MIN_PASSWORD_LENGTH;
+}

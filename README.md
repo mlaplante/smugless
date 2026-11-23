@@ -73,6 +73,21 @@ Open `/login` to start Google sign-in.
 
 </details>
 
+<details>
+<summary>Limit password sign-in attempts</summary>
+
+The admin password must be at least 12 characters. The `openssl` command above makes a 24-character one.
+
+To limit sign-in attempts to 10 per minute for each IP address, add a [rate limiting binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) named `LOGIN_LIMITER` to your Worker config, then deploy. `namespace_id` can be any number that's unique in your Cloudflare account.
+
+```json
+"ratelimits": [{ "name": "LOGIN_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }]
+```
+
+Every attempt counts, including scripts that send the password with HTTP Basic auth on each request. `scripts/seed.mjs` signs in once instead. To turn off Basic auth, add `"ADMIN_BASIC_AUTH": "off"` to `vars`.
+
+</details>
+
 ## Storage and cost
 
 One Cloudflare Worker serves the site. Cloudflare Images creates responsive AVIF and WebP copies on demand. A private R2 bucket stores the site settings, originals, and resized copies. When you delete a photo, its original moves to trash and still uses storage. Keep a separate backup of your originals.

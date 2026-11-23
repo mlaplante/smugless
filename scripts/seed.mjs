@@ -11,7 +11,20 @@ if (!BASE || !PASSWORD) {
   console.error("Set SMUGLESS_URL and SMUGLESS_PASSWORD");
   process.exit(1);
 }
-const auth = { Authorization: "Basic " + Buffer.from(`seed:${PASSWORD}`).toString("base64") };
+// Sign in once with the login form and reuse the session cookie, so the seed
+// works with ADMIN_BASIC_AUTH off and counts as one attempt against LOGIN_LIMITER.
+const login = await fetch(`${BASE}/login`, {
+  method: "POST",
+  redirect: "manual",
+  headers: { "Content-Type": "application/x-www-form-urlencoded", Origin: BASE },
+  body: new URLSearchParams({ password: PASSWORD }),
+});
+const session = login.headers.getSetCookie().find((c) => c.startsWith("smugless_session="));
+if (login.status !== 303 || !session) {
+  console.error(`Sign-in failed (${login.status})`);
+  process.exit(1);
+}
+const auth = { Cookie: session.split(";")[0] };
 
 // Unsplash photo ids (images.unsplash.com/photo-<id>)
 const GALLERIES = [
