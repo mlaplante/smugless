@@ -43,6 +43,8 @@ export interface Env {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   GOOGLE_ADMIN_EMAIL?: string;
+  ADMIN_BASIC_AUTH?: string; // "off" disables HTTP Basic auth for scripts
+  LOGIN_LIMITER?: RateLimit; // optional per-IP limit on sign-in attempts
 }
 
 const KEY = "manifest.json";

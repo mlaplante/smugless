@@ -10,7 +10,10 @@
     "tail": "wrangler tail",
     "deploy:demo": "wrangler deploy --env demo",
     "tail:demo": "wrangler tail --env demo",
-    "deploy:demo-proxy": "cd demo-proxy && wrangler pages deploy --branch main"
+    "deploy:demo-proxy": "cd demo-proxy && wrangler pages deploy --branch main",
+    "test": "vitest run",
+    "deploy:laplante": "wrangler deploy --config wrangler.laplante.jsonc",
+    "tail:laplante": "wrangler tail --config wrangler.laplante.jsonc"
   },
   "dependencies": {
     "hono": "^4.13.18",
@@ -21,6 +24,7 @@
     "photoswipe": "^5.4.4",
     "sortablejs": "^1.15.7",
     "typescript": "^7.0.2",
+    "vitest": "^5.1.1",
     "wrangler": "^4.162.0"
   },
   "license": "MIT"

@@ -1,0 +1,77 @@
+name: Sync upstream
+
+# Weekly, opens (or updates) a pull request that brings akurilin/smugless main
+# into this fork. Merge it with "Create a merge commit", never squash or rebase,
+# so the next sync only contains new upstream work.
+#
+# Set the UPSTREAM_SYNC_TOKEN secret (fine-grained token for this repository with
+# Contents, Pull requests and Workflows: read and write). Without it the job falls
+# back to GITHUB_TOKEN, which can't push upstream changes to .github/workflows
+# and opens PRs that don't trigger CI.
+
+on:
+  schedule:
+    - cron: '17 14 * * 1' # Mondays
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'mlaplante/smugless'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      UPSTREAM: https://github.com/akurilin/smugless.git
+      BRANCH: upstream-sync
+      GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+      - name: Fetch upstream
+        id: fetch
+        run: |
+          git fetch --no-tags "$UPSTREAM" main
+          if git merge-base --is-ancestor FETCH_HEAD HEAD; then
+            echo "Already up to date with upstream."
+            echo "behind=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "behind=$(git rev-list --count HEAD..FETCH_HEAD)" >> "$GITHUB_OUTPUT"
+            git branch -f upstream-main FETCH_HEAD
+          fi
+      # Git only: upstream code never runs in this job, which holds a write token.
+      # The CI workflow tests the pull request with read-only permissions.
+      - name: Try the merge
+        if: steps.fetch.outputs.behind != '0'
+        id: trial
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git merge --no-edit upstream-main; then
+            echo "result=Merges cleanly. CI on this pull request runs the typecheck and tests." >> "$GITHUB_OUTPUT"
+          else
+            git merge --abort
+            echo "result=Has merge CONFLICTS with main. Resolve them on this branch before merging." >> "$GITHUB_OUTPUT"
+          fi
+      - name: Push the upstream branch and open a pull request
+        if: steps.fetch.outputs.behind != '0'
+        env:
+          RESULT: ${{ steps.trial.outputs.result }}
+          BEHIND: ${{ steps.fetch.outputs.behind }}
+        run: |
+          git push --force origin "upstream-main:refs/heads/$BRANCH"
+          body=$(printf '%s new upstream commit(s) from akurilin/smugless.\n\n**Trial merge:** %s\n\nMerge with **Create a merge commit** (not squash or rebase) so future syncs stay small. Review src/security.ts still wraps any new routes, then check docs/SECURITY-REVIEW.md.\n' "$BEHIND" "$RESULT")
+          if [ -n "$(gh pr list --head "$BRANCH" --base main --state open --json number --jq '.[].number')" ]; then
+            gh pr edit "$BRANCH" --body "$body"
+          else
+            gh pr create --head "$BRANCH" --base main --title "Sync with upstream smugless" --body "$body"
+          fi

@@ -14,6 +14,11 @@ const MAX_BYTES = 100 * 1024 * 1024; // Workers request body limit
 const ACCEPTED = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 const CONFIRM_TIMEOUT_MS = 4000;
 const PHOTO_DELETE_CLASS = "photo-delete";
+const PHOTO_DRAG_PREVIEW_CLASS = "photo-drag-preview";
+const PHOTO_DROP_HIGHLIGHT_CLASS = "photo-drop-highlight";
+const GALLERY_ROW_SELECTOR = "#sidebar .gallery-list li[data-slug]";
+const DRAG_START_DISTANCE = 4;
+const TOUCH_DRAG_DELAY_MS = 180;
 const usdFormat = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 const gbFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 const MIN_DISPLAY_GB = 0.01;
@@ -378,8 +383,7 @@ function renderSidebar() {
         resetText: "Use default icon",
       }),
     ),
-    h("h2", {}, "Galleries"),
-    list,
+    h("section", { class: "gallery-section" }, h("h2", {}, "Galleries"), list),
     h(
       "button",
       {
@@ -758,12 +762,68 @@ function renderPhotos() {
     }),
   );
 
-  Sortable.create(grid, {
+  let highlightedGallery = null;
+  const elementAtPointer = (e) => {
+    const point = e.changedTouches?.[0] ?? e;
+    return document.elementFromPoint(point.clientX, point.clientY);
+  };
+  const highlightGallery = (e) => {
+    const row = elementAtPointer(e)?.closest(GALLERY_ROW_SELECTOR);
+    const target = row && row.dataset.slug !== g.slug ? row : null;
+    if (target === highlightedGallery) return;
+    highlightedGallery?.classList.remove(PHOTO_DROP_HIGHLIGHT_CLASS);
+    highlightedGallery = target;
+    highlightedGallery?.classList.add(PHOTO_DROP_HIGHLIGHT_CLASS);
+  };
+
+  const photoSort = Sortable.create(grid, {
     animation: 150,
+    // Use the same pointer coordinates for sorting and dropping onto the sidebar.
+    forceFallback: true,
+    fallbackOnBody: true,
+    fallbackClass: PHOTO_DRAG_PREVIEW_CLASS,
+    fallbackTolerance: DRAG_START_DISTANCE,
+    supportPointer: false,
+    delay: TOUCH_DRAG_DELAY_MS,
+    delayOnTouchOnly: true,
+    touchStartThreshold: DRAG_START_DISTANCE,
     // Let the delete button receive focus without starting a drag.
     filter: `.${PHOTO_DELETE_CLASS}`,
     preventOnFilter: false,
+    onStart: (e) => {
+      document.addEventListener("mousemove", highlightGallery);
+      document.addEventListener("touchmove", highlightGallery, { passive: true });
+      highlightGallery(e.originalEvent);
+    },
     onEnd: (e) => {
+      document.removeEventListener("mousemove", highlightGallery);
+      document.removeEventListener("touchmove", highlightGallery);
+      highlightedGallery?.classList.remove(PHOTO_DROP_HIGHLIGHT_CLASS);
+      highlightedGallery = null;
+
+      const pointer = e.originalEvent;
+      const drop = pointer.type === "touchcancel" ? null : elementAtPointer(pointer);
+      const row = drop?.closest(GALLERY_ROW_SELECTOR);
+      const target = manifest.galleries.find((gallery) => gallery.slug === row?.dataset.slug);
+      if (target && target !== g) {
+        // The photo may have shifted in the grid during the drag. Move it by ID.
+        const index = g.photos.findIndex((p) => p.id === e.item.dataset.id);
+        if (index === -1) return;
+        const [photo] = g.photos.splice(index, 1);
+        target.photos.push(photo);
+        if (g.cover === photo.id) delete g.cover;
+        if (selectedPhotoId === photo.id) selectedPhotoId = null;
+        scheduleSave();
+        renderSidebar();
+        renderPhotos();
+        return;
+      }
+
+      if (e.oldIndex === e.newIndex) return;
+      if (!drop || !grid.contains(drop)) {
+        photoSort.sort(g.photos.map((p) => p.id));
+        return;
+      }
       const [moved] = g.photos.splice(e.oldIndex, 1);
       g.photos.splice(e.newIndex, 0, moved);
       scheduleSave();
@@ -771,11 +831,12 @@ function renderPhotos() {
     },
   });
 
+  const moveHint = manifest.galleries.length > 1 ? " · drop on a gallery to move" : "";
   wrap.replaceChildren(
     h(
       "p",
       { class: "muted hint" },
-      `${g.photos.length} photo${g.photos.length === 1 ? "" : "s"} · drag to reorder · click to edit`,
+      `${g.photos.length} photo${g.photos.length === 1 ? "" : "s"} · drag to reorder${moveHint} · click to edit`,
     ),
     grid,
   );
@@ -794,9 +855,8 @@ function renderPanel() {
   }
   panel.hidden = false;
   const isCover = (g.cover ?? g.photos[0]?.id) === p.id;
-  const others = manifest.galleries.filter((x) => x !== g);
 
-  const fields = [
+  panel.replaceChildren(
     h("img", { src: thumb(p.id, 800), alt: p.filename }),
     h("p", { class: "meta" }, p.filename, h("br"), `${p.w} × ${p.h}`),
     h(
@@ -829,34 +889,7 @@ function renderPanel() {
       },
       isCover ? "Gallery cover" : "Use as gallery cover",
     ),
-    others.length
-      ? h(
-          "label",
-          {},
-          "Move to",
-          h(
-            "select",
-            {
-              onchange: (e) => {
-                const target = others.find((x) => x.slug === e.target.value);
-                if (!target) return;
-                g.photos = g.photos.filter((x) => x !== p);
-                if (g.cover === p.id) delete g.cover;
-                target.photos.push(p);
-                selectedPhotoId = null;
-                scheduleSave();
-                renderSidebar();
-                renderPhotos();
-              },
-            },
-            h("option", { value: "" }, "Choose a gallery…"),
-            others.map((x) => h("option", { value: x.slug }, x.title)),
-          ),
-        )
-      : null,
-  ];
-  // Skip the missing move field so the browser does not show "null".
-  panel.replaceChildren(...fields.filter(Boolean));
+  );
 }
 
 // ---------- About page ----------
