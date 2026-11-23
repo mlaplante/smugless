@@ -1,0 +1,4 @@
+# Headers for static files (CSS, JS, vendored libraries). Worker responses get theirs from src/security.ts.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
