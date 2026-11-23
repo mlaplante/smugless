@@ -29,6 +29,7 @@ function adminAuth(env: Env): string {
 
 export async function login(c: C): Promise<Response> {
   c.header("Cache-Control", "no-store");
+  c.header("X-Robots-Tag", "noindex");
   switch (adminAuth(c.env)) {
     case GOOGLE_AUTH: {
       const config = googleConfig(c.env);
@@ -73,6 +74,7 @@ export async function googleCallback(c: C): Promise<Response> {
 
 export const requireAdmin: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => {
   c.header("Cache-Control", "no-store");
+  c.header("X-Robots-Tag", "noindex");
   const isApi = c.req.path.startsWith("/api/");
   switch (adminAuth(c.env)) {
     case GOOGLE_AUTH: {

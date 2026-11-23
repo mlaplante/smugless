@@ -177,7 +177,10 @@ app.get("/:slug", async (c) => {
   const m = await loadManifest(c.env.BUCKET);
   const g = m.galleries.find((g) => g.slug === c.req.param("slug"));
   if (!g) return c.html(notFoundPage(m), 404);
-  return c.html(galleryPage(m, g, new URL(c.req.url).origin), 200, { "Cache-Control": PAGE_CACHE });
+  // Hidden galleries are unlisted, not private: keep a shared link out of search engines.
+  const headers: Record<string, string> = { "Cache-Control": PAGE_CACHE };
+  if (g.hidden) headers["X-Robots-Tag"] = "noindex, nofollow";
+  return c.html(galleryPage(m, g, new URL(c.req.url).origin), 200, headers);
 });
 
 app.notFound(async (c) => c.html(notFoundPage(await loadManifest(c.env.BUCKET)), 404));
