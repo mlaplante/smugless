@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import app from "../src/index";
+import { limitKey } from "../src/security";
 import { basic, ctx, limiter, makeEnv, ORIGIN, PASSWORD } from "./helpers";
 
 const req = (path: string, init: RequestInit, env = makeEnv()) => app.request(ORIGIN + path, init, env, ctx);
@@ -17,7 +18,7 @@ function sessionCookie(res: Response): string {
 }
 
 const manifest = {
-  site: { title: "LaPlante Photography" },
+  site: { title: "My Photos" },
   galleries: [
     { slug: "dogs", title: "Dogs", photos: [] },
     { slug: "smith-wedding", title: "Smith wedding", hidden: true, photos: [] },
@@ -108,8 +109,18 @@ describe("password sign-in", () => {
   });
 });
 
+describe("rate-limit key", () => {
+  it("uses the whole IPv4 address and the /64 prefix of an IPv6 address", () => {
+    expect(limitKey("203.0.113.7")).toBe("203.0.113.7");
+    expect(limitKey("2001:db8:85a3:0:1:2:3:4")).toBe("2001:db8:85a3:0::/64");
+    expect(limitKey("2001:DB8:85a3::9")).toBe("2001:db8:85a3:0::/64");
+    expect(limitKey("2001:db8::")).toBe("2001:db8:0:0::/64");
+    expect(limitKey("::1")).toBe("0:0:0:0::/64");
+  });
+});
+
 describe("HTTP Basic auth", () => {
-  it("works by default (upstream behaviour)", async () => {
+  it("works by default", async () => {
     expect((await req("/api/manifest", { headers: basic() })).status).toBe(200);
   });
 
@@ -135,6 +146,11 @@ describe("hidden galleries", () => {
     const listed = await req("/dogs", {}, env);
     expect(listed.headers.get("X-Robots-Tag")).toBeNull();
     expect(await (await req("/", {}, env)).text()).not.toContain("smith-wedding");
+  });
+
+  it("keeps the sign-in page and admin out of search engines", async () => {
+    expect((await req("/login", {})).headers.get("X-Robots-Tag")).toContain("noindex");
+    expect((await req("/admin", {})).headers.get("X-Robots-Tag")).toContain("noindex");
   });
 });
 

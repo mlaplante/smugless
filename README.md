@@ -35,7 +35,11 @@ npm run deploy
 openssl rand -base64 18 | tr -d '\n' | tee .admin-password | npx wrangler secret put ADMIN_PASSWORD
 ```
 
-Open `/login` at the URL Wrangler prints. Sign in with the password in `.admin-password`.
+Open `/login` at the URL Wrangler prints. Sign in with the password in `.admin-password`. The admin needs a password of at least 12 characters. The `openssl` command above makes 24.
+
+Password checks are limited to 10 a minute per IP address, through the `LOGIN_LIMITER` rate-limit binding in `wrangler.jsonc`. Without that binding there is no limit.
+
+Scripts can also authenticate with HTTP Basic auth on `/api/*`. If yours sign in with the form instead, as `scripts/seed.mjs` does, set the `ADMIN_BASIC_AUTH` var to `off`. Then the password is only sent at sign-in.
 
 <details>
 <summary>Sample photos and custom domains</summary>
@@ -89,6 +93,7 @@ npm run deploy                              # deploy
 npx wrangler secret put ADMIN_PASSWORD      # change the admin password
 npm run tail                                # live logs
 npm run typecheck
+npm test                                    # unit tests (vitest)
 ```
 
 ### Demo deployment

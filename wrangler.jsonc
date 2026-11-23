@@ -10,6 +10,9 @@
   // Cloudflare Images binding, used to resize originals on first request
   "images": { "binding": "IMAGES" },
   "observability": { "enabled": true },
+  // Per-IP limit on admin password checks (sign-in form and HTTP Basic): 10 a minute.
+  // namespace_id is any number unique within your Cloudflare account.
+  "ratelimits": [{ "name": "LOGIN_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }],
   // Secret (set with `wrangler secret put ADMIN_PASSWORD`): password for /admin
 
   "env": {
@@ -19,7 +22,8 @@
       "name": "smugless-demo",
       "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "smugless-demo-photos" }],
       "images": { "binding": "IMAGES" },
-      "observability": { "enabled": true }
+      "observability": { "enabled": true },
+      "ratelimits": [{ "name": "LOGIN_LIMITER", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } }]
     }
   }
 }

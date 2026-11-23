@@ -1,8 +1,8 @@
 import type { Context, MiddlewareHandler } from "hono";
 import type { Env } from "./manifest";
 
-// Hardening that sits around the app rather than inside it, kept in one file so
-// the rest of the code stays close to upstream smugless. See docs/SECURITY-REVIEW.md.
+// Defense-in-depth hardening that wraps the app: security headers, a check
+// against cross-origin writes, sign-in rate limiting and request size limits.
 
 type C = Context<{ Bindings: Env }>;
 
@@ -88,11 +88,25 @@ export async function allowAuthAttempt(c: C): Promise<boolean> {
   if (!limiter) return true;
   const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
   try {
-    return (await limiter.limit({ key: `auth:${ip}` })).success;
+    return (await limiter.limit({ key: `auth:${limitKey(ip)}` })).success;
   } catch (err) {
     console.error("rate limiter failed", err);
     return true; // fail open: a limiter outage shouldn't lock the owner out
   }
+}
+
+/**
+ * Rate-limit key for a client IP: an IPv4 address as is, an IPv6 address by its
+ * /64 prefix, since one host or network usually controls a whole /64 and could
+ * otherwise rotate addresses to dodge the limit.
+ */
+export function limitKey(ip: string): string {
+  if (!ip.includes(":")) return ip;
+  const [head, tail] = ip.toLowerCase().split("::");
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const groups = tail === undefined ? left : [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right];
+  return groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, "")).join(":") + "::/64";
 }
 
 /** HTTP Basic auth for scripts is on unless ADMIN_BASIC_AUTH is "off". */

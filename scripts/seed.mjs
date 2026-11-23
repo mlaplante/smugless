@@ -11,7 +11,9 @@ if (!BASE || !PASSWORD) {
   console.error("Set SMUGLESS_URL and SMUGLESS_PASSWORD");
   process.exit(1);
 }
-const auth = { Authorization: "Basic " + Buffer.from(`seed:${PASSWORD}`).toString("base64") };
+// Sign in once with the login form and reuse the session cookie, so the whole
+// run is a single password check rather than one per request.
+const cookie = await signIn();
 
 // Unsplash photo ids (images.unsplash.com/photo-<id>)
 const GALLERIES = [
@@ -98,8 +100,20 @@ const ABOUT = {
   ].join("\n\n"),
 };
 
+async function signIn() {
+  const res = await fetch(`${BASE}/login`, {
+    method: "POST",
+    redirect: "manual",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ password: PASSWORD }),
+  });
+  const session = res.headers.getSetCookie().find((c) => c.startsWith("smugless_session="));
+  if (res.status !== 303 || !session) throw new Error(`Sign-in failed: ${res.status} ${await res.text()}`);
+  return session.split(";")[0];
+}
+
 async function api(path, init = {}) {
-  const res = await fetch(BASE + path, { ...init, headers: { ...auth, ...init.headers } });
+  const res = await fetch(BASE + path, { ...init, headers: { Cookie: cookie, ...init.headers } });
   if (!res.ok) throw new Error(`${init.method ?? "GET"} ${path}: ${res.status} ${await res.text()}`);
   return res.json();
 }
